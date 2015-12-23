@@ -83,11 +83,25 @@ class FreehandEditing:
         self.spinBox.setToolTip("Tolerance. Level of simplification.")
         self.spinBoxAction.setEnabled(False)
 
+        suppressWarns_switch =settings.value("/freehandEdit/suppresswarns", False, type=bool)
+        if not suppressWarns_switch:
+            settings.setValue("/freehandEdit/suppresswarns", False)
+
+
+        self.chkBox = QCheckBox(self.iface.mainWindow())
+        self.chkBox.setChecked(False)
+        self.chkBox.setToolTip("Supress all warning messages.")
+        self.chkBoxAction = \
+            self.iface.digitizeToolBar().addWidget(self.chkBox)
+        self.chkBoxAction.setEnabled(False)
+
+
         # Connect to signals for button behaviour
         self.freehand_edit.activated.connect(self.freehandediting)
         self.iface.currentLayerChanged['QgsMapLayer*'].connect(self.toggle)
         self.canvas.mapToolSet['QgsMapTool*'].connect(self.deactivate)
         self.spinBox.valueChanged[float].connect(self.tolerancesettings)
+        self.chkBox.stateChanged[int].connect(self.suppresswarns)
 
         # Get the tool
         self.tool = FreehandEditingTool(self.canvas)
@@ -95,6 +109,11 @@ class FreehandEditing:
     def tolerancesettings(self):
         settings = QSettings()
         settings.setValue("/freehandEdit/tolerance", self.spinBox.value())
+
+    def suppresswarns(self):
+        settings = QSettings()
+        settings.setValue("/freehandEdit/suppresswarns", self.chkBox.isChecked())
+
 
     def freehandediting(self):
         self.canvas.setMapTool(self.tool)
@@ -112,6 +131,7 @@ class FreehandEditing:
         if (layer.isEditable() and (layer.geometryType() == QGis.Line or
                                     layer.geometryType() == QGis.Polygon)):
             self.freehand_edit.setEnabled(True)
+            self.chkBoxAction.setEnabled(True)
             self.spinBoxAction.setEnabled(
                 layer.crs().projectionAcronym() != "longlat")
             try:  # remove any existing connection first
@@ -125,6 +145,7 @@ class FreehandEditing:
                 pass
         else:
             self.freehand_edit.setEnabled(False)
+            self.chkBoxAction.setEnabled(False)
             self.spinBoxAction.setEnabled(False)
             if (layer.type() == QgsMapLayer.VectorLayer and
                     (layer.geometryType() == QGis.Line or
@@ -163,8 +184,10 @@ class FreehandEditing:
                                                   layerCRSSrsid))
         s = geom.simplify(tolerance)
 
+        suppressWarns_switch = settings.value("/freehandEdit/suppresswarns",
+                                       False, type=bool)
         #validate geometry
-        if not (s.validateGeometry()):
+        if (not (s.validateGeometry())) or suppressWarns_switch:
             f.setGeometry(s)
         else:
             reply = QMessageBox.question(
@@ -192,7 +215,7 @@ class FreehandEditing:
         layer.beginEditCommand("Feature added")
         if (settings.value(
                 "/qgis/digitizing/disable_enter_attribute_values_dialog",
-                False, type=bool)):
+                False, type=bool)) or suppressWarns_switch:
             layer.addFeature(f)
             layer.endEditCommand()
         else:
@@ -214,3 +237,4 @@ class FreehandEditing:
     def unload(self):
         self.iface.digitizeToolBar().removeAction(self.freehand_edit)
         self.iface.digitizeToolBar().removeAction(self.spinBoxAction)
+        self.iface.digitizeToolBar().removeAction(self.chkBoxAction)
